@@ -32,19 +32,21 @@ struct ErrorResponse {
 #[derive(Clone)]
 struct AppState {
     values: Arc<Mutex<VecDeque<f64>>>,
+    min_threshold: f64,
+    max_threshold: f64,
 }
 
 #[derive(Deserialize)]
 struct Config {
     ip: String,
     port: u16,
-    min_threshold: i16,
-    max_threshold: i16,
+    min_threshold: f64,
+    max_threshold: f64,
 }
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    
+
     const REQUEST_SIZE_LIMIT : usize = 16384;
     
     let config = match load_config("config.json") {
@@ -62,6 +64,8 @@ async fn main() -> std::io::Result<()> {
     
     let state = AppState {
         values: Arc::new(Mutex::new(VecDeque::new())),
+        min_threshold: config.min_threshold,
+        max_threshold: config.max_threshold
     };
 
     let app = Router::new()
@@ -141,17 +145,13 @@ async fn handle_post_data(state: State<AppState>, payload: Result<Json<RequestPa
         Err(response) => return response,
     };
 
-    if let Err(response) = validate_data(&payload) {
+    if let Err(response) = validate_data(&state, &payload) {
         return response;
     }
 
-    
-
-    let success = process_data(payload, state).await;
+    let success = process_data( state, payload).await;
     (StatusCode::OK, Json(success)).into_response()
 }
-
-
 
 async fn layer_log(req: Request, next: Next) -> Response {
     let method = req.method().clone();
@@ -168,10 +168,10 @@ async fn layer_log(req: Request, next: Next) -> Response {
     res
 }
 
-fn parse_timestamp_strict(input: &str) -> Result<DateTime<Utc>, ()> {
-    let naive =
+fn parse_timestamp_strict(input: &str) -> Result<(), ()> {
+    let _naive =
         NaiveDateTime::parse_from_str(input, "%Y-%m-%dT%H:%M:%SZ").map_err(|_| ())?;
-    Ok(DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
+    Ok(())
 }
 
 fn decode_json(payload: Result<Json<RequestPayload>, JsonRejection>) -> Result<RequestPayload, Response> {
@@ -225,10 +225,9 @@ fn decode_json(payload: Result<Json<RequestPayload>, JsonRejection>) -> Result<R
     }
 }
 
-fn validate_data(payload: &RequestPayload) -> Result<(), Response> {
-    match parse_timestamp_strict(&payload.timestamp) {
-        Ok(_) => Ok(()),
-        Err(_) => Err(
+fn validate_data(state: &State<AppState>, payload: &RequestPayload) -> Result<(), Response> {
+    if parse_timestamp_strict(&payload.timestamp).is_err() {
+        return Err(
             (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 Json(ErrorResponse {
@@ -236,12 +235,29 @@ fn validate_data(payload: &RequestPayload) -> Result<(), Response> {
                 }),
             )
                 .into_response(),
-        ),
+        );
     }
+
+    if payload.value < state.min_threshold || payload.value > state.max_threshold {
+        return Err(
+            (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(ErrorResponse {
+                    error: format!(
+                        "value must be between {} and {}",
+                        state.min_threshold, state.max_threshold
+                    ),
+                }),
+            )
+                .into_response(),
+        );
+    }
+
+    Ok(())
 }
 
-async fn process_data(payload: RequestPayload, state: State<AppState>) -> SuccessResponse {
-    println!("{} {} {}", payload.sensor_id, payload.value, payload.timestamp);
+async fn process_data(state: State<AppState>, payload: RequestPayload) -> SuccessResponse {
+    // println!("{} {} {}", payload.sensor_id, payload.value, payload.timestamp);
 
     let mut values = state.values.lock().await;
     values.push_back(payload.value);
@@ -250,7 +266,7 @@ async fn process_data(payload: RequestPayload, state: State<AppState>) -> Succes
     }
 
     let avg = values.iter().sum::<f64>() / values.len() as f64;
-    println!("moving average: {}", avg);
+    // println!("moving average: {}", avg);
 
     SuccessResponse {
         moving_average: avg,
