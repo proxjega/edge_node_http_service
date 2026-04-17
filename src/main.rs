@@ -20,7 +20,6 @@ struct RequestPayload {
 
 #[derive(Debug, Serialize)]
 struct SuccessResponse {
-    message: String,
     moving_average: f64,
     timesamp: String,
 }
@@ -35,23 +34,47 @@ struct AppState {
     values: Arc<Mutex<VecDeque<f64>>>,
 }
 
+#[derive(Deserialize)]
+struct Config {
+    ip: String,
+    port: u16,
+    min_threshold: i16,
+    max_threshold: i16,
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    // todo: cfg
+    
+    const REQUEST_SIZE_LIMIT : usize = 16384;
+    
+    let config = match load_config("config.json") {
+        Ok(config) => config,
+        Err(err) => {
+            eprintln!("configuration error: {err}");
+            return Err(err);
+        }
+    };
+
+    println!(
+        "loaded config: bind {}:{}, thresholds {}..{}",
+        config.ip, config.port, config.min_threshold, config.max_threshold
+    );
+    
     let state = AppState {
         values: Arc::new(Mutex::new(VecDeque::new())),
     };
 
     let app = Router::new()
         .route("/data", post(handle_post_data))
-        .layer(DefaultBodyLimit::max(16 * 1024))
+        .layer(DefaultBodyLimit::max(REQUEST_SIZE_LIMIT))
         .layer(from_fn(layer_log))
         .with_state(state);
 
-    let listener = match tokio::net::TcpListener::bind("0.0.0.0:3000").await {
+    let bind_addr = format!("{}:{}", config.ip, config.port);
+    let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
         Ok(listener) => listener,
         Err(err) => {
-            eprintln!("failed to bind 0.0.0.0:3000: {err}");
+            eprintln!("failed to bind {bind_addr}: {err}");
             return Err(err);
         }
     };
@@ -62,6 +85,54 @@ async fn main() -> std::io::Result<()> {
     }
 
     Ok(())
+}
+
+fn load_config(path: &str) -> std::io::Result<Config> {
+    let contents = match std::fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            println!("config file not found: {path}");
+            return Err(err);
+        }
+        Err(err) => {
+            println!("failed to read config file {path}: {err}");
+            return Err(err);
+        }
+    };
+
+    match serde_json::from_str::<Config>(&contents) {
+        Ok(config) => {
+            if config.ip.trim().is_empty() {
+                println!("config error: missing ip value");
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "missing ip value",
+                ));
+            }
+
+            if config.port == 0 {
+                println!("config error: missing or invalid port value");
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "missing or invalid port value",
+                ));
+            }
+
+            if config.min_threshold > config.max_threshold {
+                println!("config error: min_threshold is greater than max_threshold");
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "min_threshold is greater than max_threshold",
+                ));
+            }
+
+            Ok(config)
+        }
+        Err(err) => {
+            println!("config parse error in {path}: {err}");
+            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, err))
+        }
+    }
 }
 
 async fn handle_post_data(state: State<AppState>, payload: Result<Json<RequestPayload>, JsonRejection>) -> Response {
@@ -182,7 +253,6 @@ async fn process_data(payload: RequestPayload, state: State<AppState>) -> Succes
     println!("moving average: {}", avg);
 
     SuccessResponse {
-        message: format!("payload accepted for sensor {}", payload.sensor_id),
         moving_average: avg,
         timesamp: Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
     }
