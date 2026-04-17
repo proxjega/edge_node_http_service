@@ -1,11 +1,12 @@
 use axum::{
     extract::{Json, Request, rejection::JsonRejection},
+    http::StatusCode,
     middleware::{from_fn, Next},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::post,
     Router,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Deserialize)]
@@ -13,6 +14,16 @@ struct RequestPayload {
     sensor_id: String,
     value: f64,
     timestamp: String,
+}
+
+#[derive(Debug, Serialize)]
+struct SuccessResponse {
+    message: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ErrorResponse {
+    error: String,
 }
 
 #[tokio::main]
@@ -37,27 +48,63 @@ async fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-async fn handle_data(payload: Result<Json<RequestPayload>, JsonRejection>) {
+async fn handle_data(payload: Result<Json<RequestPayload>, JsonRejection>) -> Response {
     match payload {
-        Ok(payload) => {
-            println!("{} {} {}", payload.sensor_id, payload.value, payload.timestamp)
+        Ok(Json(payload)) => {
+            println!("{} {} {}", payload.sensor_id, payload.value, payload.timestamp);
+
+            (
+                StatusCode::OK,
+                Json(SuccessResponse {
+                    message: format!("payload accepted for sensor {}", payload.sensor_id),
+                }),
+            )
+                .into_response()
         }
         Err(JsonRejection::MissingJsonContentType(_)) => {
-            // Request didn't have `Content-Type: application/json`
-            // header
+            (
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                Json(ErrorResponse {
+                    error: "missing or invalid Content-Type, expected application/json".to_string(),
+                }),
+            )
+                .into_response()
         }
         Err(JsonRejection::JsonDataError(_)) => {
-            // Couldn't deserialize the body into the target type
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "JSON shape/type mismatch for RequestPayload".to_string(),
+                }),
+            )
+                .into_response()
         }
         Err(JsonRejection::JsonSyntaxError(_)) => {
-            // Syntax error in the body
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid JSON syntax".to_string(),
+                }),
+            )
+                .into_response()
         }
         Err(JsonRejection::BytesRejection(_)) => {
-            // Failed to extract the request body
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "failed to read request body".to_string(),
+                }),
+            )
+                .into_response()
         }
         Err(_) => {
-            // `JsonRejection` is marked `#[non_exhaustive]` so match must
-            // include a catch-all case.
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "unexpected JSON extraction error".to_string(),
+                }),
+            )
+                .into_response()
         }
     }
 }
