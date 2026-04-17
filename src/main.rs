@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Json, Request, rejection::JsonRejection, DefaultBodyLimit},
+    extract::{DefaultBodyLimit, Json, Request, State, rejection::JsonRejection},
     http::StatusCode,
     middleware::{from_fn, Next},
     response::{IntoResponse, Response},
@@ -8,7 +8,8 @@ use axum::{
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::time::Instant;
+use std::{collections::VecDeque, sync::Arc, time::Instant};
+use tokio::sync::Mutex;
 
 #[derive(Debug, Deserialize)]
 struct RequestPayload {
@@ -20,6 +21,8 @@ struct RequestPayload {
 #[derive(Debug, Serialize)]
 struct SuccessResponse {
     message: String,
+    moving_average: f64,
+    timesamp: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -27,12 +30,23 @@ struct ErrorResponse {
     error: String,
 }
 
+#[derive(Clone)]
+struct AppState {
+    values: Arc<Mutex<VecDeque<f64>>>,
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    // todo: cfg
+    let state = AppState {
+        values: Arc::new(Mutex::new(VecDeque::new())),
+    };
+
     let app = Router::new()
-        .route("/data", post(handle_data))
+        .route("/data", post(handle_post_data))
         .layer(DefaultBodyLimit::max(16 * 1024))
-        .layer(from_fn(layer_log));
+        .layer(from_fn(layer_log))
+        .with_state(state);
 
     let listener = match tokio::net::TcpListener::bind("0.0.0.0:3000").await {
         Ok(listener) => listener,
@@ -50,7 +64,7 @@ async fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-async fn handle_data(payload: Result<Json<RequestPayload>, JsonRejection>) -> Response {
+async fn handle_post_data(state: State<AppState>, payload: Result<Json<RequestPayload>, JsonRejection>) -> Response {
     let payload = match decode_json(payload) {
         Ok(payload) => payload,
         Err(response) => return response,
@@ -60,7 +74,9 @@ async fn handle_data(payload: Result<Json<RequestPayload>, JsonRejection>) -> Re
         return response;
     }
 
-    let success = process_data(payload);
+    
+
+    let success = process_data(payload, state).await;
     (StatusCode::OK, Json(success)).into_response()
 }
 
@@ -153,10 +169,21 @@ fn validate_data(payload: &RequestPayload) -> Result<(), Response> {
     }
 }
 
-fn process_data(payload: RequestPayload) -> SuccessResponse {
+async fn process_data(payload: RequestPayload, state: State<AppState>) -> SuccessResponse {
     println!("{} {} {}", payload.sensor_id, payload.value, payload.timestamp);
+
+    let mut values = state.values.lock().await;
+    values.push_back(payload.value);
+    if values.len() > 10 {
+        values.pop_front();
+    }
+
+    let avg = values.iter().sum::<f64>() / values.len() as f64;
+    println!("moving average: {}", avg);
 
     SuccessResponse {
         message: format!("payload accepted for sensor {}", payload.sensor_id),
+        moving_average: avg,
+        timesamp: Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
     }
 }
