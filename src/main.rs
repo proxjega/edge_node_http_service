@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Json, Request, rejection::JsonRejection},
+    extract::{Json, Request, rejection::JsonRejection, DefaultBodyLimit},
     http::StatusCode,
     middleware::{from_fn, Next},
     response::{IntoResponse, Response},
@@ -8,6 +8,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
+use chrono::{DateTime, NaiveDateTime, Utc};
+use std::collections::VecDeque;
 
 #[derive(Debug, Deserialize)]
 struct RequestPayload {
@@ -30,6 +32,7 @@ struct ErrorResponse {
 async fn main() -> std::io::Result<()> {
     let app = Router::new()
         .route("/data", post(handle_data))
+        .layer(DefaultBodyLimit::max(16 * 1024))
         .layer(from_fn(layer_log));
 
     let listener = match tokio::net::TcpListener::bind("0.0.0.0:3000").await {
@@ -52,14 +55,7 @@ async fn handle_data(payload: Result<Json<RequestPayload>, JsonRejection>) -> Re
     match payload {
         Ok(Json(payload)) => {
             println!("{} {} {}", payload.sensor_id, payload.value, payload.timestamp);
-
-            (
-                StatusCode::OK,
-                Json(SuccessResponse {
-                    message: format!("payload accepted for sensor {}", payload.sensor_id),
-                }),
-            )
-                .into_response()
+            return validate_data(&payload)
         }
         Err(JsonRejection::MissingJsonContentType(_)) => {
             (
@@ -110,6 +106,7 @@ async fn handle_data(payload: Result<Json<RequestPayload>, JsonRejection>) -> Re
 }
 
 
+
 async fn layer_log(req: Request, next: Next) -> Response {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
@@ -124,4 +121,32 @@ async fn layer_log(req: Request, next: Next) -> Response {
     println!("[RES] {} {} -> {} ({} micros)", method, path, status, elapsed_ms);
 
     res
+}
+
+fn parse_timestamp_strict(input: &str) -> Result<DateTime<Utc>, ()> {
+    let naive =
+        NaiveDateTime::parse_from_str(input, "%Y-%m-%dT%H:%M:%SZ").map_err(|_| ())?;
+    Ok(DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
+}
+
+fn validate_data(payload: &RequestPayload) -> Response {
+    match parse_timestamp_strict(&payload.timestamp) {
+        Ok(ts) => {
+            return(
+                StatusCode::OK,
+                Json(SuccessResponse {
+                    message: format!("payload accepted for sensor {}", payload.sensor_id),
+                }),
+            ).into_response();
+        }
+        Err(_) => {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(ErrorResponse {
+                    error: "timestamp must match YYYY-MM-DDTHH:MM:SSZ".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    }
 }
