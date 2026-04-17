@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edge Node HTTP Service API Documentation</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui.css">
+    <style>
+        html {
+            box-sizing: border-box;
+            overflow: -moz-scrollbars-vertical;
+            overflow-y: scroll;
+        }
+
+        *,
+        *:before,
+        *:after {
+            box-sizing: inherit;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
+            background: #fafafa;
+        }
+    </style>
+</head>
+<body>
+    <div id="swagger-ui"></div>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui-bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui-standalone-preset.js"></script>
+    <script>
+        const openAPISpec = {
+            "openapi": "3.0.0",
+            "info": {
+                "title": "Edge Node HTTP Service API",
+                "description": "A sensor data processing service that accepts sensor readings and returns moving averages",
+                "version": "0.1.0"
+            },
+            "paths": {
+                "/data": {
+                    "post": {
+                        "summary": "Submit sensor data",
+                        "description": "Accepts sensor data with validation against configured thresholds.\nMaintains a moving average of the last 10 readings.\nValidates timestamp format and value range.",
+                        "requestBody": {
+                            "required": true,
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "$ref": "#/components/schemas/RequestPayload"
+                                    },
+                                    "examples": {
+                                        "validRequest": {
+                                            "summary": "Valid sensor reading",
+                                            "value": {
+                                                "sensor_id": "sensor_001",
+                                                "value": 42.5,
+                                                "timestamp": "2024-04-17T14:30:00Z"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "responses": {
+                            "200": {
+                                "description": "Data processed successfully",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "$ref": "#/components/schemas/SuccessResponse"
+                                        },
+                                        "examples": {
+                                            "success": {
+                                                "summary": "Successful response with moving average",
+                                                "value": {
+                                                    "moving_average": 42.15,
+                                                    "timesamp": "2024-04-17T14:30:05Z"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "400": {
+                                "description": "Bad request - malformed JSON or invalid JSON syntax",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "$ref": "#/components/schemas/ErrorResponse"
+                                        },
+                                        "examples": {
+                                            "syntaxError": {
+                                                "summary": "Invalid JSON syntax",
+                                                "value": {
+                                                    "error": "invalid JSON syntax"
+                                                }
+                                            },
+                                            "dataError": {
+                                                "summary": "JSON structure mismatch",
+                                                "value": {
+                                                    "error": "JSON shape/type mismatch for RequestPayload"
+                                                }
+                                            },
+                                            "readError": {
+                                                "summary": "Failed to read request body",
+                                                "value": {
+                                                    "error": "failed to read request body"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "415": {
+                                "description": "Unsupported Media Type - missing or invalid Content-Type header",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "$ref": "#/components/schemas/ErrorResponse"
+                                        },
+                                        "example": {
+                                            "error": "missing or invalid Content-Type, expected application/json"
+                                        }
+                                    }
+                                }
+                            },
+                            "422": {
+                                "description": "Unprocessable Entity - validation failed",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "$ref": "#/components/schemas/ErrorResponse"
+                                        },
+                                        "examples": {
+                                            "invalidTimestamp": {
+                                                "summary": "Invalid timestamp format",
+                                                "value": {
+                                                    "error": "timestamp must match YYYY-MM-DDTHH:MM:SSZ"
+                                                }
+                                            },
+                                            "outOfRange": {
+                                                "summary": "Value outside threshold range",
+                                                "value": {
+                                                    "error": "value must be between 0 and 100"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "500": {
+                                "description": "Internal server error",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "$ref": "#/components/schemas/ErrorResponse"
+                                        },
+                                        "example": {
+                                            "error": "unexpected JSON extraction error"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "components": {
+                "schemas": {
+                    "RequestPayload": {
+                        "type": "object",
+                        "description": "Sensor data submission payload",
+                        "required": ["sensor_id", "value", "timestamp"],
+                        "properties": {
+                            "sensor_id": {
+                                "type": "string",
+                                "description": "Unique identifier for the sensor",
+                                "example": "sensor_001"
+                            },
+                            "value": {
+                                "type": "number",
+                                "format": "double",
+                                "description": "Numeric sensor reading value",
+                                "example": 42.5
+                            },
+                            "timestamp": {
+                                "type": "string",
+                                "format": "date-time",
+                                "description": "ISO 8601 formatted timestamp with UTC timezone.\nFormat: YYYY-MM-DDTHH:MM:SSZ",
+                                "example": "2024-04-17T14:30:00Z"
+                            }
+                        }
+                    },
+                    "SuccessResponse": {
+                        "type": "object",
+                        "description": "Successful sensor data response with moving average",
+                        "required": ["moving_average", "timesamp"],
+                        "properties": {
+                            "moving_average": {
+                                "type": "number",
+                                "format": "double",
+                                "description": "Moving average of the last 10 sensor readings (or fewer if less than 10 readings received).\nIncludes the current reading.",
+                                "example": 42.15
+                            },
+                            "timesamp": {
+                                "type": "string",
+                                "format": "date-time",
+                                "description": "Server timestamp when the response was generated.\nFormat: YYYY-MM-DDTHH:MM:SSZ\nNote: Field name has a typo (\"timesamp\" instead of \"timestamp\")",
+                                "example": "2024-04-17T14:30:05Z"
+                            }
+                        }
+                    },
+                    "ErrorResponse": {
+                        "type": "object",
+                        "description": "Error response with error message",
+                        "required": ["error"],
+                        "properties": {
+                            "error": {
+                                "type": "string",
+                                "description": "Human-readable error message",
+                                "example": "timestamp must match YYYY-MM-DDTHH:MM:SSZ"
+                            }
+                        }
+                    }
+                }
+            },
+            "tags": [
+                {
+                    "name": "Sensor Data",
+                    "description": "Endpoints for sensor data operations"
+                }
+            ]
+        };
+
+        const ui = SwaggerUIBundle({
+            spec: openAPISpec,
+            dom_id: '#swagger-ui',
+            presets: [
+                SwaggerUIBundle.presets.apis,
+                SwaggerUIStandalonePreset
+            ],
+            layout: "StandaloneLayout"
+        });
+
+        window.onload = function() {
+            console.log('Swagger UI loaded for Edge Node HTTP Service API');
+        };
+    </script>
+</body>
+</html>
