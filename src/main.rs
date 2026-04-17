@@ -1,22 +1,26 @@
 use axum::{
-    Router, 
-    body::{Body, to_bytes}, 
-    extract::Request, 
-    middleware::{Next, from_fn}, 
-    response::Response, 
-    routing::post
+    extract::{Json, Request, rejection::JsonRejection},
+    middleware::{from_fn, Next},
+    response::Response,
+    routing::post,
+    Router,
 };
+use serde::Deserialize;
 use std::time::Instant;
 
+#[derive(Debug, Deserialize)]
+struct RequestPayload {
+    sensor_id: String,
+    value: f64,
+    timestamp: String,
+}
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    // build our application with a single route
     let app = Router::new()
-    .route("/data", post(|| async { "Post detected" }))
-    .layer(from_fn(layer_log));
+        .route("/data", post(handle_data))
+        .layer(from_fn(layer_log));
 
-    // run our app with hyper, listening globally on port 3000
     let listener = match tokio::net::TcpListener::bind("0.0.0.0:3000").await {
         Ok(listener) => listener,
         Err(err) => {
@@ -32,6 +36,32 @@ async fn main() -> std::io::Result<()> {
 
     Ok(())
 }
+
+async fn handle_data(payload: Result<Json<RequestPayload>, JsonRejection>) {
+    match payload {
+        Ok(payload) => {
+            println!("{} {} {}", payload.sensor_id, payload.value, payload.timestamp)
+        }
+        Err(JsonRejection::MissingJsonContentType(_)) => {
+            // Request didn't have `Content-Type: application/json`
+            // header
+        }
+        Err(JsonRejection::JsonDataError(_)) => {
+            // Couldn't deserialize the body into the target type
+        }
+        Err(JsonRejection::JsonSyntaxError(_)) => {
+            // Syntax error in the body
+        }
+        Err(JsonRejection::BytesRejection(_)) => {
+            // Failed to extract the request body
+        }
+        Err(_) => {
+            // `JsonRejection` is marked `#[non_exhaustive]` so match must
+            // include a catch-all case.
+        }
+    }
+}
+
 
 async fn layer_log(req: Request, next: Next) -> Response {
     let method = req.method().clone();
