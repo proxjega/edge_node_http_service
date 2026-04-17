@@ -1,0 +1,14 @@
+services:
+  local:
+    build: .
+    image: edge-node-http-service:latest
+    container_name: edge-node-http-service-local
+    ports:
+      - "8080:8080"
+
+  remote:
+    build: .
+    image: edge-node-http-service:latest
+    container_name: edge-node-http-service-remote
+    ports:
+      - "8081:8080"
