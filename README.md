@@ -102,9 +102,9 @@ Local processing is much faster.
 - When sending data to remote server, there is a possibility for packet loss and for losing access for the network. So the real results may be worse.
 - Big amounts of data sent to one server from many sensors may slow down processing speed.
 - There was almost no logging in this service, in real-world applications middleware like logging or monitoring can increase latency.
-- No HTTPS: TLS handshakes increase latency (although if the service is behind a reverse proxy, it is not required)
-Conclusion: In real-world deployment latency will be worse.
-#### Everything was tested on this specs:
+- No HTTPS: TLS handshakes increase latency (although if the service is behind a reverse proxy, it is not required)  
+#### Conclusion: In real-world deployment latency will be worse.
+### Everything was tested on this specs:
 - CPU - AMD Ryzen 7 7735HS (16) @ 4.83 GHz
 - RAM - 16 GB
 - Disk - SSD disk
