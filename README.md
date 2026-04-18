@@ -4,20 +4,21 @@
 
 This service receives sensor readings over HTTP, validates them, and returns a moving average.
 
-- Exposes one endpoint: `POST /data`
-- Accepts JSON payloads with:
+### One endpoint: `POST /data`
+1. Accepts JSON payloads with:
 	- `sensor_id` (string)
 	- `value` (number)
 	- `timestamp` (UTC format: `YYYY-MM-DDTHH:MM:SSZ`)
-- Validates incoming data:
+2. Validates incoming data:
 	- Requires `Content-Type: application/json`
 	- Rejects malformed or schema-invalid JSON
 	- Ensures `timestamp` matches the required UTC format
 	- Ensures `value` is within configured `min_threshold` and `max_threshold`
-- Maintains an in-memory rolling window of the latest 10 values
-- Returns a successful response with:
+3. Maintains an in-memory rolling window of the latest 10 values
+4. Returns a successful response with:
 	- `moving_average`: average of the rolling window
 	- `timesamp`: server timestamp when the response is created
+
 
 ### Response behavior
 
@@ -34,11 +35,24 @@ The service reads `config.json` at startup for:
 - `ip` and `port` to bind the HTTP server
 - `min_threshold` and `max_threshold` for value validation
 
+#### OpenAPI documentation available in **openapi** folder
+
+## Prerequisites
+
+### For running this service:
+- Docker and Docker Compose (required to run with `docker compose up`)
+
+### For compiling from source:
+- Rust toolchain for local builds (`rustc` + Cargo)
+
+### For running benchmark
+- Python 3 (required to run `benchmark.py`)
+
 ## Installation guide
 1. Clone the repository
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/proxjega/edge_node_http_service.git
 cd edge_node_http_service
 ```
 
@@ -67,3 +81,25 @@ Example:
 ```bash
 docker compose up --build
 ```
+
+## Architecture
+### Programming language:
+The service was built using Rust. Why? Because:
+- **It is fast.** If we need low latency and fast processing, rust is the best choice for this.  
+<br>
+![alt text](images/image.png)  
+source: https://sharkbench.dev/  
+<br>
+- **Low memory usage.** Service can be deployed on small devices. 2 running containers  use ~7MB RAM:  
+<br>
+![alt text](images/ram.png)  
+<br>
+
+### Processing logic
+The processing logic is described above, in [What this service does](#what-this-service-does) section. Reasons: 
+- **Safety:** strict request validation and threshold checks prevent invalid sensor data from affecting results, for example a faulty sensor reporting extreme values.
+- **Bounded resource usage:** the rolling window is capped at 10 values, so memory use stays predictable over time.
+- **Clear failure modes:** parsing and validation are separated from computation, so clients get deterministic errors and debugging is simpler.
+- **Concurrency-safe state:** shared state is protected during updates, so concurrent requests do not corrupt the rolling window.
+- **Performance:** Rust and the chosen architecture keep overhead low and latency predictable for edge workloads.
+
