@@ -100,8 +100,10 @@ Benchmark:
 Local processing is much faster. 
 #### What simulation does not capture compared to a real-world deployment:
 - When sending data to remote server, there is a possibility for packet loss and for losing access for the network. So the real results may be worse.
-- Big amounts of data sent to one server from many sensors may slow down processing speed
-- There was almost no logging in this service, in real-world
+- Big amounts of data sent to one server from many sensors may slow down processing speed.
+- There was almost no logging in this service, in real-world applications middleware like logging or monitoring can increase latency.
+- No HTTPS: TLS handshakes increase latency (although if the service is behind a reverse proxy, it is not required)
+Conclusion: In real-world deployment latency will be worse.
 
 
 ## Architecture
@@ -125,3 +127,14 @@ The processing logic is described above, in [What this service does](#what-this-
 - **Concurrency-safe state:** shared state is protected during updates, so concurrent requests do not corrupt the rolling window.
 - **Performance:** Rust and the chosen architecture keep overhead low and latency predictable for edge workloads.
 
+## Retrospective
+- I was suprised by local processing speed. For one request it is ~50 microseconds (from getting request to sending response).
+- I was also suprised by rust. It is my first time working with this language, and it is suprisingly understandable and convenient for a systems language. Also the web framework axum is quite nice.
+- It was hard to understand rust macros and error handling at first, but with the help of AI I managed to do it.
+
+## Next Steps
+- Change and increase the logging from stdout to a file / database / other logging service, so it would be easier to debug the crashes.
+- More processing: I am not sure that 10 values moving average is meaningful enough in real code.
+- Authentication and authorization: so the requests will come from trusted sources (or use reverse proxy that will manage this).
+- Make moving average per sensor, not one for all sensors.
+- Use timestamp from request somewhere (maybe in logging) - its read, but not used in the code.
