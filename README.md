@@ -109,16 +109,15 @@ Conclusion: In real-world deployment latency will be worse.
 ## Architecture
 ### Programming language:
 The service was built using Rust. Why? Because:
-- **It is fast.** If we need low latency and fast processing, rust is the best choice for this.  
-<br>
+- **It is fast.** If we need low latency and fast processing, rust is the best choice for this.
+<br></br>
 ![alt text](images/image.png)  
 source: https://sharkbench.dev/  
-<br>
-- **Low memory usage.** Service can be deployed on small devices. 2 running containers  use ~7MB RAM:  
-<br>
+<br></br>
+- **Low memory usage.** Service can be deployed on small devices. 2 running containers  use ~7MB RAM:
+<br></br>
 ![alt text](images/ram.png)  
-<br>
-
+<br></br>
 ### Processing logic
 The processing logic is described above, in [What this service does](#what-this-service-does) section. Reasons: 
 - **Safety:** strict request validation and threshold checks prevent invalid sensor data from affecting results, for example a faulty sensor reporting extreme values.
