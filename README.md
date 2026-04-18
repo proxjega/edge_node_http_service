@@ -1,5 +1,5 @@
 # Edge Node HTTP service
-
+Lightweight edge HTTP service written in Rust that ingests sensor data, validates it, and computes a rolling moving average over the latest 10 readings. It exposes a single POST /data endpoint with strict schema and threshold checks, returning deterministic errors and fast responses. Designed for low-latency local processing with minimal memory usage, outperforming remote processing in benchmark tests.
 ## What this service does
 
 This service receives sensor readings over HTTP, validates them, and returns a moving average.
