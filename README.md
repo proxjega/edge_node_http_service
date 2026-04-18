@@ -82,6 +82,28 @@ Example:
 docker compose up --build
 ```
 
+## Benchmark
+The service was benchmarked to explain, why processing locally is actually better than sending data to a remote server, using real numbers. See `benchmark.py` script.
+Benchmark:
+1. Sends 100 correct requests with random temperaturs to first (local) container and measures their time
+2. Enables tc netem to add artificial network latency (delay 100ms, jitter 20ms) 
+3. Sends 100 correct requests with random temperatures to second ("remote") container and measures their time
+4. Disables tc netem
+5. Outputs results
+### Results of benchmark:
+![alt text](images/benchmark.png)
+- Both container successfully processed all data.
+- Local processing is much faster, than sending data to a remote server: 2.53 ms vs 411.92 ms (~163 times faster).
+- Latency range: In local: ~13 ms, in remote: ~213 ms
+- Tail latency is also much better locally: p95 3.47 ms vs 458.62 ms remote (about 132x improvement).
+#### Conclusion:
+Local processing is much faster. 
+#### What simulation does not capture compared to a real-world deployment:
+- When sending data to remote server, there is a possibility for packet loss and for losing access for the network. So the real results may be worse.
+- Big amounts of data sent to one server from many sensors may slow down processing speed
+- There was almost no logging in this service, in real-world
+
+
 ## Architecture
 ### Programming language:
 The service was built using Rust. Why? Because:
